@@ -1,0 +1,63 @@
+/* Minimal CSS: keep only what's necessary for TipTap / ProseMirror functionality.
+   Layout and visual styling should be done with Tailwind classes in components.
+*/
+
+/* Reset body margin (Tailwind preflight covers most resets) */
+body {
+  margin: 0;
+}
+
+/* Ensure tiptap editor fills its container and behaves correctly */
+.ProseMirror {
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  outline: none;
+  text-align: left;
+}
+
+/* List markers inside the editor */
+.ProseMirror ul,
+.ProseMirror ol {
+  margin: 0.5rem 0 0.5rem 1.25rem;
+  padding: 0;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.ProseMirror li {
+  margin: 0.25rem 0;
+}
+
+.ProseMirror li p {
+  display: block;
+  margin: 0;
+}
+
+/* Editor content defaults — prefer Tailwind for visuals */
+.prose-editor .ProseMirror {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.prose-editor .ProseMirror p {
+  margin: 0 0 0.75rem 0;
+}
+
+.prose-editor .ProseMirror h1,
+.prose-editor .ProseMirror h2,
+.prose-editor .ProseMirror h3 {
+  margin: 0 0 0.5rem 0;
+}
+
+.prose-editor .ProseMirror img {
+  max-width: 100%;
+  display: block;
+  margin: 0.5rem 0;
+}
