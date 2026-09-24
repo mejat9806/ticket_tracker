@@ -1,6 +1,6 @@
 [config]
-model = "openrouter/z-ai/glm-5.3-flash:nitro" # OpenRouter models need the "openrouter/" prefix
-fallback_models = ["openrouter/deepseek/deepseek-v4-flash-0731:nitro"]
+model = "openrouter/z-ai/glm-5.3-flash" # OpenRouter models need the "openrouter/" prefix
+fallback_models = ["openrouter/deepseek/deepseek-v4-flash-0731"]
 ai_timeout = 120
 custom_model_max_tokens = 200000 # Critical! Errors without this
 response_language = "en-US"
