@@ -13,6 +13,7 @@ type GitHubIssue = {
   updated_at: string;
   body: string | null;
   user: { login: string } | null;
+  pull_request?: unknown;
 };
 
 const ISSUES_PER_PAGE = 100;
@@ -31,7 +32,9 @@ const fetchIssueStats = async (params: IssueStatsProps): Promise<IssueStatsResul
   if (!response.ok) {
     throw new Error(`Failed to fetch issues: ${response.status}`);
   }
-  const issues: GitHubIssue[] = await response.json();
+  const fetchedIssues: GitHubIssue[] = await response.json();
+  // GitHub's issues endpoint also returns pull requests
+  const issues = fetchedIssues.filter((issue) => !issue.pull_request);
   const fetchedAt = Date.now();
   const staleIssueCount = issues.filter(
     (issue) => fetchedAt - new Date(issue.updated_at).getTime() > STALE_ISSUE_THRESHOLD_MS,
@@ -43,7 +46,7 @@ export default function IssueStats(props: IssueStatsProps) {
   const [isOpen, setIsOpen] = useState(true);
 
   const { data: issueStats, isError: hasError } = useQuery({
-    queryKey: ['issue-stats', props.owner, props.repo, props.token],
+    queryKey: ['issue-stats', props.owner, props.repo],
     queryFn: () => fetchIssueStats(props),
   });
   const issues = issueStats?.issues ?? [];
@@ -68,9 +71,14 @@ export default function IssueStats(props: IssueStatsProps) {
           ))}
         </ul>
       )}
-      <p>{issueStats?.staleIssueCount ?? 0} stale issues</p>
+      {hasError ? (
+        <p>Failed to load issues</p>
+      ) : issueStats ? (
+        <p>{issueStats.staleIssueCount} stale issues</p>
+      ) : (
+        <p>Loading issues...</p>
+      )}
       <p className="whitespace-pre-wrap">{issues[0]?.body}</p>
-      {hasError ? <p>Failed to load issues</p> : null}
     </div>
   );
 }
