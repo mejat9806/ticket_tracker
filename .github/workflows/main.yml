@@ -38,3 +38,17 @@ jobs:
           github_action_config.auto_review: "true" # enable\disable auto review
           github_action_config.auto_describe: "true" # enable\disable auto describe
           github_action_config.auto_improve: "true" # enable\disable auto improve
+
+      # PR Agent only reacts 👀 when a /command starts; swap it for 🚀 (done) or 😕 (failed)
+      - name: Mark /command as done
+        if: always() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTCOME: ${{ steps.pragent.outcome }}
+          REACTIONS_API: repos/${{ github.repository }}/${{ github.event_name == 'issue_comment' && 'issues' || 'pulls' }}/comments/${{ github.event.comment.id }}/reactions
+        run: |
+          for id in $(gh api "$REACTIONS_API" --jq '.[] | select(.content == "eyes" and .user.login == "github-actions[bot]") | .id'); do
+            gh api -X DELETE "$REACTIONS_API/$id"
+          done
+          if [ "$OUTCOME" = "success" ]; then emoji=rocket; else emoji=confused; fi
+          gh api -X POST "$REACTIONS_API" -f content="$emoji" --silent
