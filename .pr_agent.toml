@@ -19,6 +19,7 @@ glob = ['dist/**']
 [pr_reviewer]
 extra_instructions = """\
 (0) Check every changed line against the code style rules in AGENTS.md and report each violation, citing the rule it breaks.
+In particular, flag booleans not prefixed with `is`/`has`/`should` (e.g. `loading` -> `isLoading`).
 
 (1) Act as a highly experienced software engineer
 (2) Provide thorough review of code, documents, and articles
@@ -50,7 +51,7 @@ add_original_user_description = false
 publish_description_as_comment = true
 
 [pr_code_suggestions]
-extra_instructions = "Provide actionable code suggestions with examples. Include fixes for violations of the AGENTS.md code style rules."
+extra_instructions = "Provide actionable code suggestions with examples. Include fixes for violations of the AGENTS.md code style rules. Name booleans with an `is`/`has`/`should` prefix (e.g. `isLoading`, not `loading`) in suggested code."
 focus_only_on_problems = false
 commitable_code_suggestions = true
 demand_code_suggestions_self_review=true
