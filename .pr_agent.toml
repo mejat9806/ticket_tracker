@@ -1,0 +1,52 @@
+[config]
+model = "glm-5.3-flash" # I specified gpt-5, but an error occurred. The correct setting is "openai/gpt-5".
+fallback_models = ["deepseek-v4-flash-0731"]
+ai_timeout = 300
+custom_model_max_tokens = 200000 # Critical! Errors without this
+response_language = "en-US"
+ignore_pr_title = ["^\\[Auto\\]", "^Auto"]
+ignore_pr_labels = ['invalid']
+
+[ignore]
+glob = ['dist/**']
+
+[github_action_config]
+# set as env var in .github/workflows/pr-agent.yaml
+#auto_review = true
+#auto_improve = true
+#auto_describe = true
+
+[pr_reviewer]
+extra_instructions = """\
+(1) Act as a highly experienced software engineer
+(2) Provide thorough review of code, documents, and articles
+(3) Suggest concrete code snippets for improvement
+
+(4) **Never** comment on indentation, whitespace, blank lines, or other purely stylistic issues unless they change program semantics.
+
+(5) **Priority Review Areas - Check systematically:**
+- **Security**: Plaintext passwords, SQL injection, input validation, exception leaks
+- **Error Handling**: Bare except clauses, missing try-catch, silent error suppression  
+- **Resource Management**: Missing context managers (with statements), unclosed connections/files
+- **Type Safety**: Missing type hints, incorrect type usage, unjustified Any types
+- **Performance**: Inefficient algorithms (O(n²) or worse), unnecessary loops, memory leaks
+- **Code Quality**: Magic numbers, unclear variable names, unused imports/variables
+- **API Design**: Missing input validation, no error responses, required field checks
+- **Architecture**: Single responsibility violations, tight coupling, global state usage
+
+(6) Focus on concrete, actionable issues with specific code examples and fix recommendations.
+"""
+num_code_suggestions = 5
+inline_code_comments = true
+ask_and_reflect = true
+
+[pr_description]
+extra_instructions = "Generate clear and comprehensive descriptions"
+generate_ai_title = true
+add_original_user_description = false 
+publish_description_as_comment = true
+
+[pr_code_suggestions]
+extra_instructions = "Provide actionable code suggestions with examples"
+commitable_code_suggestions = true
+demand_code_suggestions_self_review=true
