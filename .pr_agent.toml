@@ -18,11 +18,13 @@ glob = ['dist/**']
 
 [pr_reviewer]
 extra_instructions = """\
+(0) Check every changed line against the code style rules in AGENTS.md and report each violation, citing the rule it breaks.
+
 (1) Act as a highly experienced software engineer
 (2) Provide thorough review of code, documents, and articles
 (3) Suggest concrete code snippets for improvement
 
-(4) **Never** comment on indentation, whitespace, blank lines, or other purely stylistic issues unless they change program semantics.
+(4) **Never** comment on indentation, whitespace or blank lines unless they change program semantics. This does not apply to the AGENTS.md rules (naming, typing, React, styling, clean code), which must be enforced.
 
 (5) **Priority Review Areas - Check systematically:**
 - **Security**: Plaintext passwords, SQL injection, input validation, exception leaks
@@ -37,6 +39,7 @@ extra_instructions = """\
 (6) Focus on concrete, actionable issues with specific code examples and fix recommendations.
 """
 num_code_suggestions = 5
+num_max_findings = 8
 inline_code_comments = true
 ask_and_reflect = true
 
@@ -47,6 +50,7 @@ add_original_user_description = false
 publish_description_as_comment = true
 
 [pr_code_suggestions]
-extra_instructions = "Provide actionable code suggestions with examples"
+extra_instructions = "Provide actionable code suggestions with examples. Include fixes for violations of the AGENTS.md code style rules."
+focus_only_on_problems = false
 commitable_code_suggestions = true
 demand_code_suggestions_self_review=true
