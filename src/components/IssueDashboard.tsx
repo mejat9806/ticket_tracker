@@ -77,7 +77,7 @@ export default function IssueDashboard(props: IssueDashboardProps) {
         Refresh
       </button>
       <p>
-        Showing {filteredIssues.length} of {issues.length} issues
+        Showing {filtered.length} of {count} issues
       </p>
       <a href={`https://github.com/${props.owner}/${props.repo}`} target="_blank" rel="noopener noreferrer">
         Open on GitHub
