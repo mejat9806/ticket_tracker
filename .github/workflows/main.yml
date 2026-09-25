@@ -37,11 +37,19 @@ jobs:
           sparse-checkout: .agents/skills
           persist-credentials: false
 
+      # Comments are posted as the review GitHub App (custom name/avatar) instead of github-actions[bot]
+      - name: Create review app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEW_APP_ID }}
+          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
+
       - name: PR Agent action step with OpenRouter
         id: pragent
         uses: the-pr-agent/pr-agent@main
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }} # OpenRouter API key
           SKILLS__ENABLED: "true" # skills.paths can only be set here, not in .pr_agent.toml
           SKILLS__PATHS: '["/github/workspace/.agents/skills"]'
@@ -53,11 +61,12 @@ jobs:
       - name: Mark /command as done
         if: always() && github.event_name != 'pull_request'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BOT_LOGIN: ${{ steps.app-token.outputs.app-slug }}[bot]
           OUTCOME: ${{ steps.pragent.outcome }}
           REACTIONS_API: repos/${{ github.repository }}/${{ github.event_name == 'issue_comment' && 'issues' || 'pulls' }}/comments/${{ github.event.comment.id }}/reactions
         run: |
-          for id in $(gh api "$REACTIONS_API" --jq '.[] | select(.content == "eyes" and .user.login == "github-actions[bot]") | .id'); do
+          for id in $(gh api "$REACTIONS_API" --jq '.[] | select(.content == "eyes" and .user.login == env.BOT_LOGIN) | .id'); do
             gh api -X DELETE "$REACTIONS_API/$id"
           done
           if [ "$OUTCOME" = "success" ]; then emoji=rocket; else emoji=confused; fi
