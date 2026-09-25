@@ -55,5 +55,5 @@ num_code_suggestions_per_chunk = 20 # default is 3, which hides most issues on s
 extra_instructions = "Provide actionable code suggestions with examples. Include fixes for violations of the AGENTS.md code style rules. Name booleans with an `is`/`has`/`should` prefix (e.g. `isLoading`, not `loading`) and avoid vague names with suffixes like `Data`, `Info`, `Misc`, `Helper` (e.g. `repo`, not `repoData`) in suggested code."
 focus_only_on_problems = false
 commitable_code_suggestions = false # one persistent table comment, updated in place with history
-dual_publishing_score_threshold = 0 # 0 = every suggestion goes both in the table and inline with a "Commit suggestion" button (-1 would disable inline)
+dual_publishing_score_threshold = 1 # every suggestion goes in the table and inline (0 turns inline off; score-0 suggestions are dropped anyway)
 demand_code_suggestions_self_review=true
