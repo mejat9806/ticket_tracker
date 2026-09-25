@@ -37,22 +37,28 @@ export function buildIssuesUrl(params: { owner: string; repo: string; page: numb
   return url.toString();
 }
 
-export async function fetchIssues(params: RepoParams & { page: number }): Promise<GitHubIssue[]> {
+export async function fetchIssues(
+  params: RepoParams & { page: number },
+): Promise<{ issues: GitHubIssue[]; isLastPage: boolean }> {
   const response = await fetch(buildIssuesUrl(params), { headers: buildHeaders(params.token) });
   if (!response.ok) {
     throw new Error(`Failed to load issues (status ${response.status})`);
   }
-  const issues = (await response.json()) as GitHubIssue[];
-  // The /issues endpoint also returns pull requests
-  return issues.filter((issue) => !issue.pull_request);
+  const entries = (await response.json()) as GitHubIssue[];
+  return {
+    // The /issues endpoint also returns pull requests
+    issues: entries.filter((entry) => !entry.pull_request),
+    // Check the unfiltered page size: a page of only pull requests is not the last page
+    isLastPage: entries.length < ISSUES_PER_PAGE,
+  };
 }
 
 export async function fetchAllIssues(params: RepoParams): Promise<GitHubIssue[]> {
   const allIssues: GitHubIssue[] = [];
   for (let page = 1; page <= MAX_ISSUE_PAGES; page++) {
-    const issues = await fetchIssues({ ...params, page });
-    if (issues.length === 0) break;
+    const { issues, isLastPage } = await fetchIssues({ ...params, page });
     allIssues.push(...issues);
+    if (isLastPage) break;
   }
   return allIssues;
 }
@@ -89,6 +95,7 @@ export async function closeIssue(params: RepoParams & { issueNumber: number }): 
 }
 
 export function formatCount(count: number): string {
-  if (count > THOUSAND) return `${count / THOUSAND}k`;
+  // Number() drops a trailing '.0' (2000 -> '2k', 12345 -> '12.3k')
+  if (count > THOUSAND) return `${Number((count / THOUSAND).toFixed(1))}k`;
   return String(count);
 }

@@ -46,6 +46,18 @@ export default function IssueDashboard(props: IssueDashboardProps) {
         onChange={(e) => setFilter(e.target.value)}
       />
       <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>State</th>
+            <th>Labels</th>
+            <th>Stale</th>
+            <th>Assignee</th>
+            <th>
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
         <tbody>
           {filteredIssues.map((issue) => (
             <tr key={issue.id}>
@@ -62,7 +74,7 @@ export default function IssueDashboard(props: IssueDashboardProps) {
                 <button
                   type="button"
                   aria-label={`Close issue #${issue.number}`}
-                  disabled={closeIssueMutation.isPending}
+                  disabled={closeIssueMutation.isPending && closeIssueMutation.variables === issue.number}
                   onClick={() => closeIssueMutation.mutate(issue.number)}
                 >
                   ✕
@@ -72,12 +84,17 @@ export default function IssueDashboard(props: IssueDashboardProps) {
           ))}
         </tbody>
       </table>
+      {closeIssueMutation.isError && (
+        <p className="text-red-600" role="alert">
+          {closeIssueMutation.error.message}
+        </p>
+      )}
       {selectedIssue && <div className="whitespace-pre-wrap">{selectedIssue.body ?? '-'}</div>}
       <button type="button" onClick={() => refetch()}>
         Refresh
       </button>
       <p>
-        Showing {filtered.length} of {count} issues
+        Showing {filteredIssues.length} of {issues.length} issues
       </p>
       <a href={`https://github.com/${props.owner}/${props.repo}`} target="_blank" rel="noopener noreferrer">
         Open on GitHub
