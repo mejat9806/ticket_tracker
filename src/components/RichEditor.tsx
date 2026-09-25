@@ -14,7 +14,8 @@ import go from 'highlight.js/lib/languages/go'
 import ruby from 'highlight.js/lib/languages/ruby'
 import EditorToolbar from './EditorToolbar'
 import { useMutation } from '@tanstack/react-query'
-import { uploadImageToWebhook } from '../utils/uploadImage'
+import { uploadImageToGitHub } from '../utils/uploadImage'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function RichEditor({
     value,
@@ -34,7 +35,8 @@ export default function RichEditor({
     showToolbar?: boolean
 }) {
     const [isUploading, setIsUploading] = React.useState(false)
-    const uploadMutation = useMutation({ mutationFn: ({ file, owner, repo }: { file: File; owner?: string | null; repo?: string | null }) => uploadImageToWebhook(file, owner, repo) })
+    const { providerToken } = useAuth()
+    const uploadMutation = useMutation({ mutationFn: ({ file, owner, repo }: { file: File; owner?: string | null; repo?: string | null }) => uploadImageToGitHub({ file, owner, repo, token: providerToken }) })
 
         // register common languages for lowlight/highlighting
         ; (function registerLowlightLanguages() {
