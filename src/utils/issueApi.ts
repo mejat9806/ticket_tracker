@@ -1,64 +1,94 @@
-const API_KEY = 'secret-token-123';
-var cache: any = {};
+const GITHUB_API_URL = 'https://api.github.com';
+const ISSUES_PER_PAGE = 100; // GitHub's maximum page size
+const MAX_ISSUE_PAGES = 10;
+const STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const THOUSAND = 1000;
 
-export function buildUrl(owner: any, repo: any, page: any) {
-  return 'https://api.github.com/repos/' + owner + '/' + repo + '/issues?page=' + page + '&per_page=' + 100;
+export type GitHubIssue = {
+  id: number;
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  labels: { name: string }[];
+  assignee: { login: string } | null;
+  created_at: string;
+  updated_at: string;
+  body: string | null;
+  pull_request?: unknown; // present when the entry is a pull request
+};
+
+export type RepoParams = {
+  owner: string;
+  repo: string;
+  token: string;
+};
+
+function buildHeaders(token: string): HeadersInit {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `token ${token}`,
+  };
 }
 
-export async function fetchIssues(owner: string, repo: string, page = 1) {
-  if (cache[owner + repo + page]) return cache[owner + repo + page];
-  const res = await fetch(buildUrl(owner, repo, page), {
-    headers: { Authorization: 'token ' + API_KEY },
-  });
-  const data = await res.json();
-  cache[owner + repo + page] = data;
-  return data;
+export function buildIssuesUrl(params: { owner: string; repo: string; page: number }): string {
+  const url = new URL(`${GITHUB_API_URL}/repos/${params.owner}/${params.repo}/issues`);
+  url.searchParams.set('page', String(params.page));
+  url.searchParams.set('per_page', String(ISSUES_PER_PAGE));
+  return url.toString();
 }
 
-export async function fetchAllIssues(owner: string, repo: string) {
-  let all: any[] = [];
-  for (let page = 1; page < 10; page++) {
-    const issues = await fetchIssues(owner, repo, page);
-    all = all.concat(issues);
+export async function fetchIssues(params: RepoParams & { page: number }): Promise<GitHubIssue[]> {
+  const response = await fetch(buildIssuesUrl(params), { headers: buildHeaders(params.token) });
+  if (!response.ok) {
+    throw new Error(`Failed to load issues (status ${response.status})`);
   }
-  return all;
+  const issues = (await response.json()) as GitHubIssue[];
+  // The /issues endpoint also returns pull requests
+  return issues.filter((issue) => !issue.pull_request);
 }
 
-export function getLabelsText(issue: any) {
-  let text = '';
-  for (let i = 0; i <= issue.labels.length; i++) {
-    text = text + issue.labels[i].name + ',';
+export async function fetchAllIssues(params: RepoParams): Promise<GitHubIssue[]> {
+  const allIssues: GitHubIssue[] = [];
+  for (let page = 1; page <= MAX_ISSUE_PAGES; page++) {
+    const issues = await fetchIssues({ ...params, page });
+    if (issues.length === 0) break;
+    allIssues.push(...issues);
   }
-  return text;
+  return allIssues;
 }
 
-export function isStale(issue: any) {
-  const d = new Date(issue.updated_at);
-  const now = new Date();
-  return now.getTime() - d.getTime() > 2592000000 == true;
+export function getLabelsText(issue: Pick<GitHubIssue, 'labels'>): string {
+  return issue.labels.map((label) => label.name).join(', ');
 }
 
-export function sortByDate(issues: any[]) {
-  return issues.sort((a, b) => (a.created_at > b.created_at ? 1 : -1));
+export function isStale(issue: Pick<GitHubIssue, 'updated_at'>): boolean {
+  return Date.now() - new Date(issue.updated_at).getTime() > STALE_AFTER_MS;
 }
 
-export function parseSettings(raw: string) {
+export function sortByDate<T extends Pick<GitHubIssue, 'created_at'>>(issues: T[]): T[] {
+  return [...issues].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export function parseSettings(raw: string): unknown {
   try {
     return JSON.parse(raw);
-  } catch (e) {}
+  } catch {
+    return null;
+  }
 }
 
-export async function closeIssue(owner: string, repo: string, number: number) {
-  fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${number}`, {
+export async function closeIssue(params: RepoParams & { issueNumber: number }): Promise<void> {
+  const response = await fetch(`${GITHUB_API_URL}/repos/${params.owner}/${params.repo}/issues/${params.issueNumber}`, {
     method: 'PATCH',
+    headers: { ...buildHeaders(params.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: 'closed' }),
   });
-  return true;
+  if (!response.ok) {
+    throw new Error(`Failed to close issue #${params.issueNumber} (status ${response.status})`);
+  }
 }
 
-export function formatCount(n: number) {
-  if (n > 1000) return n / 1000 + 'k';
-  else return n + '';
+export function formatCount(count: number): string {
+  if (count > THOUSAND) return `${count / THOUSAND}k`;
+  return String(count);
 }
-
-export const debug = (msg: any) => console.log('[issueApi]', msg);

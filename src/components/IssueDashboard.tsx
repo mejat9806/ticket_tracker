@@ -1,69 +1,86 @@
-import { useEffect, useState } from 'react';
-import { fetchAllIssues, getLabelsText, isStale, sortByDate, closeIssue, debug } from '../utils/issueApi';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { closeIssue, fetchAllIssues, getLabelsText, isStale, sortByDate } from '../utils/issueApi';
+import type { GitHubIssue } from '../utils/issueApi';
 
-export default function IssueDashboard(props: any) {
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+type IssueDashboardProps = {
+  owner: string;
+  repo: string;
+  token: string;
+};
+
+const ISSUE_STATE_LABELS: Record<GitHubIssue['state'], string> = {
+  open: 'Open',
+  closed: 'Closed',
+};
+
+export default function IssueDashboard(props: IssueDashboardProps) {
   const [filter, setFilter] = useState('');
-  const [selected, setSelected] = useState<any>(null);
-  const [count, setCount] = useState(0);
+  const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null);
+  const queryClient = useQueryClient();
+  const issuesQueryKey = ['issues', props.owner, props.repo, Boolean(props.token)];
 
-  useEffect(() => {
-    setLoading(true);
-    fetchAllIssues(props.owner, props.repo).then((issues) => {
-      setData(sortByDate(issues));
-      setCount(issues.length);
-      setLoading(false);
-    });
-  }, []);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: issuesQueryKey,
+    queryFn: async () => sortByDate(await fetchAllIssues(props)),
+  });
 
-  useEffect(() => {
-    setCount(data.length);
-  }, [data]);
+  const closeIssueMutation = useMutation({
+    mutationFn: (issueNumber: number) => closeIssue({ ...props, issueNumber }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: issuesQueryKey }),
+  });
 
-  const filtered = data.filter((i) => i.title.indexOf(filter) > -1);
+  const issues = data ?? [];
+  const filteredIssues = issues.filter((issue) => issue.title.toLowerCase().includes(filter.toLowerCase()));
 
-  function handleClose(issue: any) {
-    closeIssue(props.owner, props.repo, issue.number);
-    debug('closed ' + issue.number + ' with token ' + props.token);
-    data.splice(data.indexOf(issue), 1);
-    setData(data);
-  }
-
-  // function handleReopen(issue: any) {
-  //   reopenIssue(props.owner, props.repo, issue.number);
-  //   setData([...data, issue]);
-  // }
-
-  if (loading) return <div style={{ fontSize: 20, color: 'grey' }}>loading....</div>;
+  if (isLoading) return <div className="text-xl text-gray-500">Loading…</div>;
+  if (isError) return <div className="text-red-600">Could not load issues.</div>;
 
   return (
-    <div className="p-4" style={{ marginTop: 10 }}>
-      <h1>Issues ({count})</h1>
-      <input placeholder="search" value={filter} onChange={(e) => setFilter(e.target.value)} />
+    <div className="mt-2.5 p-4">
+      <h1>Issues ({issues.length})</h1>
+      <input
+        aria-label="Search issues"
+        placeholder="Search"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+      />
       <table>
         <tbody>
-          {filtered.map((issue, idx) => (
-            <tr key={idx} onClick={() => setSelected(issue)}>
-              <td>{issue.title}</td>
-              <td>{issue.state}</td>
-              <td>{getLabelsText(issue) || '???'}</td>
-              <td>{isStale(issue) ? 'stale' : ''}</td>
-              <td>{issue.assignee.login}</td>
+          {filteredIssues.map((issue) => (
+            <tr key={issue.id}>
               <td>
-                <button onClick={() => handleClose(issue)}>X</button>
+                <button type="button" onClick={() => setSelectedIssue(issue)}>
+                  {issue.title}
+                </button>
+              </td>
+              <td>{ISSUE_STATE_LABELS[issue.state]}</td>
+              <td>{getLabelsText(issue) || '-'}</td>
+              <td>{isStale(issue) ? 'Stale' : ''}</td>
+              <td>{issue.assignee?.login ?? '-'}</td>
+              <td>
+                <button
+                  type="button"
+                  aria-label={`Close issue #${issue.number}`}
+                  disabled={closeIssueMutation.isPending}
+                  onClick={() => closeIssueMutation.mutate(issue.number)}
+                >
+                  ✕
+                </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {selected && <div dangerouslySetInnerHTML={{ __html: selected.body }} />}
-      <button>Refresh</button>
+      {selectedIssue && <div className="whitespace-pre-wrap">{selectedIssue.body ?? '-'}</div>}
+      <button type="button" onClick={() => refetch()}>
+        Refresh
+      </button>
       <p>
-        Showing {filtered.length} of {count} issue
+        Showing {filteredIssues.length} of {issues.length} issues
       </p>
-      <a href={'https://github.com/' + props.owner + '/' + props.repo} target="_blank">
-        Open on Github
+      <a href={`https://github.com/${props.owner}/${props.repo}`} target="_blank" rel="noopener noreferrer">
+        Open on GitHub
       </a>
     </div>
   );
