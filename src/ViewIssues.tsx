@@ -48,7 +48,7 @@ const ViewIssues = ({ providerToken }: { providerToken?: string | null }) => {
           <div className="px-3 py-2 text-red-500">Failed to load repos</div>
         ) : (
           <select value={repo} onChange={(e) => setRepo(e.target.value)} className="px-3 py-2 border rounded">
-            {(reposQuery.data || []).map((r: any) => (
+            {(reposQuery.data?.repos ?? []).map((r) => (
               <option key={r.id} value={r.name}>{r.name}</option>
             ))}
           </select>
@@ -58,7 +58,8 @@ const ViewIssues = ({ providerToken }: { providerToken?: string | null }) => {
 
       {query.isLoading && <p>Loading...</p>}
       {query.isError && <p className="text-red-500">{(query.error as Error).message}</p>}
-      {reposQuery.isError && <p className="text-red-500">Failed to load repositories</p>}
+      {reposQuery.isError && <p className="text-red-500">Failed to load repositories: {reposQuery.error.message}</p>}
+      {reposQuery.data?.isTruncated && <p className="text-slate-500 text-sm">Showing the 1,000 most recently updated repositories.</p>}
 
       <ul className="space-y-3">
         {(issues || []).map((iss: any) => (

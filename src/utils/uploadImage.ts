@@ -23,7 +23,8 @@ export async function uploadImageToGitHub(params: {
     if (!params.token) throw new Error('Sign in with GitHub to upload images');
 
     const safeName = params.file.name.replace(/[^a-zA-Z0-9._-]/g, '-') || 'image';
-    const path = `${ISSUE_IMAGES_DIR}/${Date.now()}-${safeName}`;
+    // A random prefix keeps parallel uploads of same-named files from colliding (GitHub rejects overwrites without a sha)
+    const path = `${ISSUE_IMAGES_DIR}/${crypto.randomUUID()}-${safeName}`;
     const response = await fetch(`${GITHUB_API_URL}/repos/${params.owner}/${params.repo}/contents/${path}`, {
         method: 'PUT',
         headers: {

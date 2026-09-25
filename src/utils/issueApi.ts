@@ -30,17 +30,30 @@ function buildHeaders(token: string): HeadersInit {
   return headers;
 }
 
-function isGitHubIssueArray(value: unknown): value is GitHubIssue[] {
+// Checks every field the dashboard reads, so a malformed entry fails here instead of crashing the render
+function isGitHubIssue(value: unknown): value is GitHubIssue {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Record<string, unknown>;
   return (
-    Array.isArray(value) &&
-    value.every(
-      (entry) => typeof entry === 'object' && entry !== null && 'id' in entry && 'number' in entry && 'title' in entry,
-    )
+    typeof entry.id === 'number' &&
+    typeof entry.number === 'number' &&
+    typeof entry.title === 'string' &&
+    (entry.state === 'open' || entry.state === 'closed') &&
+    Array.isArray(entry.labels) &&
+    entry.labels.every((label) => typeof label === 'object' && label !== null && 'name' in label) &&
+    typeof entry.created_at === 'string' &&
+    typeof entry.updated_at === 'string'
   );
+}
+
+function isGitHubIssueArray(value: unknown): value is GitHubIssue[] {
+  return Array.isArray(value) && value.every(isGitHubIssue);
 }
 
 export function buildIssuesUrl(params: { owner: string; repo: string; page: number }): string {
   const url = new URL(`${GITHUB_API_URL}/repos/${params.owner}/${params.repo}/issues`);
+  // The endpoint defaults to open issues only; the dashboard shows both states
+  url.searchParams.set('state', 'all');
   url.searchParams.set('page', String(params.page));
   url.searchParams.set('per_page', String(ISSUES_PER_PAGE));
   return url.toString();
@@ -63,8 +76,8 @@ export async function fetchIssues(
   return {
     // The /issues endpoint also returns pull requests
     issues: entries.filter((entry) => !entry.pull_request),
-    // Check the unfiltered page size: a page of only pull requests is not the last page
-    isLastPage: entries.length < ISSUES_PER_PAGE,
+    // The Link header is authoritative: a full page can still be the last one
+    isLastPage: !response.headers.get('Link')?.includes('rel="next"'),
   };
 }
 
@@ -89,7 +102,7 @@ export function isStale(issue: Pick<GitHubIssue, 'updated_at'>): boolean {
 
 // Newest first, matching GitHub's own issue list
 export function sortByDate<T extends Pick<GitHubIssue, 'created_at'>>(issues: T[]): T[] {
-  return [...issues].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return [...issues].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
 }
 
 export async function closeIssue(params: RepoParams & { issueNumber: number }): Promise<void> {

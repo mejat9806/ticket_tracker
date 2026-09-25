@@ -12,6 +12,10 @@ async function getAuthenticatedLogin(
   headers: HeadersInit,
 ): Promise<string | null> {
   const response = await fetch(`${GITHUB_API_URL}/user`, { headers });
+  // Surface a rejected token instead of silently falling back to the public-only repo list
+  if (response.status === 401) {
+    throw new Error('GitHub sign-in has expired. Sign out and sign in again.');
+  }
   if (!response.ok) return null;
   const user = (await response.json()) as { login: string };
   return user.login;
@@ -20,7 +24,7 @@ async function getAuthenticatedLogin(
 export async function getReposByOwner(
   owner: string,
   token?: string,
-): Promise<GitHubRepo[]> {
+): Promise<{ repos: GitHubRepo[]; isTruncated: boolean }> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
   };
@@ -49,9 +53,12 @@ export async function getReposByOwner(
     }
     const repos = (await response.json()) as GitHubRepo[];
     allRepos.push(...repos);
-    if (repos.length < REPOS_PER_PAGE) break;
+    if (repos.length < REPOS_PER_PAGE) {
+      return { repos: allRepos, isTruncated: false };
+    }
   }
-  return allRepos;
+  // Stopped at MAX_REPO_PAGES with more pages left
+  return { repos: allRepos, isTruncated: true };
 }
 
 export type SavedFilter = { owner: string; repo: string; state: string };
@@ -69,14 +76,19 @@ export async function getIssueCount(params: {
   const req = new URLSearchParams();
   if (params.closed) req.set('state', 'closed');
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${params.owner}/${params.repo}/issues?` +
+    const response = await fetch(
+      `${GITHUB_API_URL}/repos/${params.owner}/${params.repo}/issues?` +
         req.toString(),
     );
-    const json = await res.json();
-    return json.length as number;
-  } catch (err: any) {
-    throw 'Could not load issues: ' + err.message;
+    // On failure GitHub returns an error object, not an array
+    if (!response.ok) {
+      throw new Error(`GitHub returned status ${response.status}`);
+    }
+    const issues = (await response.json()) as unknown[];
+    return issues.length;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Could not load issues: ${message}`, { cause: error });
   }
 }
 

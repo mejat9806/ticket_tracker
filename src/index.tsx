@@ -8,6 +8,8 @@ import RichEditor from './components/RichEditor'
 import { useMutation } from '@tanstack/react-query'
 import { uploadImageToGitHub } from './utils/uploadImage'
 
+const GITHUB_API_URL = 'https://api.github.com';
+
 type NewIssue = {
   owner: string;
   repo: string;
@@ -16,6 +18,7 @@ type NewIssue = {
   labels: string[];
   assignees: string[];
   milestone?: number;
+  attachments: File[];
 };
 
 export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: { providerToken?: string | null, showAttachments?: boolean }) => {
@@ -33,6 +36,8 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
   });
 
   const [images, setImages] = React.useState<File[]>([]);
+  // Attachments already committed to the repo, so retrying a failed submit doesn't commit them again
+  const uploadedImages = React.useRef(new Map<File, { repoPath: string; url: string }>());
   const [previews, setPreviews] = React.useState<string[]>([]);
   const defaultBody = 'teste'
   const [editorHTML, setEditorHTML] = React.useState(defaultBody)
@@ -41,8 +46,24 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
 
   const submitMutation = useMutation({
     mutationFn: async (issue: NewIssue) => {
-      const { owner, repo, ...payload } = issue
-      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+      const { owner, repo, attachments, ...payload } = issue
+      const repoPath = `${owner}/${repo}`
+      // Attachments are uploaded to the repo and added to the end of the body as images
+      const attachmentMarkdown = await Promise.all(
+        attachments.map(async (file) => {
+          const previousUpload = uploadedImages.current.get(file)
+          // Reuse only when it went to the same repo; the user may have changed the target since
+          const url =
+            previousUpload?.repoPath === repoPath
+              ? previousUpload.url
+              : await uploadImageToGitHub({ file, owner, repo, token: providerToken })
+          uploadedImages.current.set(file, { repoPath, url })
+          return `![${file.name}](${url})`
+        }),
+      )
+      payload.body = [payload.body, ...attachmentMarkdown].filter(Boolean).join('\n\n')
+
+      const response = await fetch(`${GITHUB_API_URL}/repos/${owner}/${repo}/issues`, {
         method: 'POST',
         headers: {
           Accept: 'application/vnd.github+json',
@@ -63,7 +84,8 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
         )
       }
       return (await response.json()) as { html_url: string }
-    }
+    },
+    onSuccess: () => uploadedImages.current.clear(),
   })
 
   // RichEditor manages its own paste/drop upload listeners
@@ -107,23 +129,16 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
     }
 
     try {
-      // Attachments are uploaded to the repo and added to the end of the body as images
-      const attachmentMarkdown = await Promise.all(
-        images.map(async (file) => {
-          const url = await uploadImageToGitHub({ file, owner: data.owner, repo: data.repoName, token: providerToken })
-          return `![${file.name}](${url})`
-        }),
-      )
-      const body = [bodyMarkdown, ...attachmentMarkdown].filter(Boolean).join('\n\n')
-
       const createdIssue = await submitMutation.mutateAsync({
         owner: data.owner,
         repo: data.repoName,
         title: data.title,
-        body,
+        body: bodyMarkdown,
+        attachments: images,
         labels: parseList(data.labels),
         assignees: parseList(data.assignees),
-        milestone: data.milestoneId ? Number(data.milestoneId) : undefined,
+        // Non-numeric input would become NaN, which JSON sends as null and GitHub rejects
+        milestone: Number.isInteger(Number(data.milestoneId)) && data.milestoneId ? Number(data.milestoneId) : undefined,
       })
       alert(`🚀 Issue created: ${createdIssue.html_url}`);
       reset();

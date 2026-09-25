@@ -22,7 +22,7 @@ export default function IssueDashboard(props: IssueDashboardProps) {
   const queryClient = useQueryClient();
   const issuesQueryKey = ['issues', props.owner, props.repo, Boolean(props.token)];
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: issuesQueryKey,
     queryFn: async ({ signal }) => {
       const { issues, isTruncated } = await fetchAllIssues({ ...props, signal });
@@ -45,6 +45,7 @@ export default function IssueDashboard(props: IssueDashboardProps) {
     return (
       <div>
         <p className="text-red-600">Could not load issues.</p>
+        <p className="text-sm text-red-600">{error.message}</p>
         <button type="button" onClick={() => refetch()}>
           Retry
         </button>
@@ -88,14 +89,16 @@ export default function IssueDashboard(props: IssueDashboardProps) {
               <td>{isStale(issue) ? 'Stale' : ''}</td>
               <td>{issue.assignee?.login ?? '-'}</td>
               <td>
-                <button
-                  type="button"
-                  aria-label={`Close issue #${issue.number}`}
-                  disabled={closeIssueMutation.isPending && closeIssueMutation.variables === issue.number}
-                  onClick={() => closeIssueMutation.mutate(issue.number)}
-                >
-                  ✕
-                </button>
+                {issue.state === 'open' && (
+                  <button
+                    type="button"
+                    aria-label={`Close issue #${issue.number}`}
+                    disabled={closeIssueMutation.isPending && closeIssueMutation.variables === issue.number}
+                    onClick={() => closeIssueMutation.mutate(issue.number)}
+                  >
+                    ✕
+                  </button>
+                )}
               </td>
             </tr>
           ))}
