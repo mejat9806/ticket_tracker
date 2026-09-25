@@ -29,12 +29,22 @@ jobs:
       id-token: write
     name: Run pr agent on every pull request
     steps:
+      # Skills are read from main (not the PR branch) so a PR can't rewrite its own review rules
+      - name: Check out review skills
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .agents/skills
+          persist-credentials: false
+
       - name: PR Agent action step with OpenRouter
         id: pragent
         uses: the-pr-agent/pr-agent@main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENROUTER__KEY: ${{ secrets.OPENROUTER_API_KEY }} # OpenRouter API key
+          SKILLS__ENABLED: "true" # skills.paths can only be set here, not in .pr_agent.toml
+          SKILLS__PATHS: '["/github/workspace/.agents/skills"]'
           github_action_config.auto_review: "true" # enable\disable auto review
           github_action_config.auto_describe: "true" # enable\disable auto describe
           github_action_config.auto_improve: "true" # enable\disable auto improve
