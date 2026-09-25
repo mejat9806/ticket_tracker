@@ -1,41 +1,45 @@
-export async function uploadImageToWebhook(file: File, owner?: string | null, repo?: string | null) {
-    // Replace this with your actual upload webhook if different
-    const webhookUrl = import.meta.env.VITE_GITHUB_UPLOAD_IMAGE
-    const fd = new FormData()
-    fd.append('image', file)
-    if (owner) fd.append('owner', owner)
-    if (repo) fd.append('repo', repo)
+const GITHUB_API_URL = 'https://api.github.com';
+const ISSUE_IMAGES_DIR = '.github/issue-images';
+const BASE64_CHUNK_SIZE = 0x8000; // keeps String.fromCharCode under the argument limit
 
-    const resp = await fetch(webhookUrl, { method: 'POST', body: fd })
-    console.log('Upload response status:', resp.status, resp.statusText)
-    if (!resp.ok) {
-        throw new Error(`Upload failed with status ${resp.status}`)
+async function fileToBase64(file: File): Promise<string> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += BASE64_CHUNK_SIZE) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK_SIZE));
     }
+    return btoa(binary);
+}
 
-    // Read as text first to avoid "bodyUsed" issues in devtools, then parse
-    const text = await resp.text()
-    let json: any = null
-    try {
-        json = JSON.parse(text)
-    } catch (e) {
-        console.warn('Upload webhook returned non-JSON response:', text)
-        return null
+// GitHub has no API for issue attachments, so the image is committed to the repo
+// (default branch, under ISSUE_IMAGES_DIR) and its raw URL is returned for the issue body.
+export async function uploadImageToGitHub(params: {
+    file: File;
+    owner?: string | null;
+    repo?: string | null;
+    token?: string | null;
+}): Promise<string> {
+    if (!params.owner || !params.repo) throw new Error('Set the repository owner and name before uploading images');
+    if (!params.token) throw new Error('Sign in with GitHub to upload images');
+
+    const safeName = params.file.name.replace(/[^a-zA-Z0-9._-]/g, '-') || 'image';
+    const path = `${ISSUE_IMAGES_DIR}/${Date.now()}-${safeName}`;
+    const response = await fetch(`${GITHUB_API_URL}/repos/${params.owner}/${params.repo}/contents/${path}`, {
+        method: 'PUT',
+        headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: `token ${params.token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            message: `Upload issue image ${safeName}`,
+            content: await fileToBase64(params.file),
+        }),
+    });
+    if (!response.ok) {
+        throw new Error(`Image upload failed with status ${response.status}`);
     }
-
-    // Log full response JSON for debugging (can be removed later)
-    console.log('Upload webhook JSON response:', json)
-
-    // Try many common shapes for returned URL
-    const url = json.url
-        || (json.data && json.data.url)
-        || json.fileUrl
-        || json.file_url
-        || json.location
-        || json.link
-        || json.path
-        || (json.file && (json.file.url || json.filePath || json.file.path))
-        || (json.result && json.result.url)
-        || null
-
-    return url
+    const result = (await response.json()) as { content: { html_url: string } };
+    // ?raw=true serves the image itself and also works in private repos for people with access
+    return `${result.content.html_url}?raw=true`;
 }

@@ -6,6 +6,17 @@ import Link from '@tiptap/extension-link'
 import TurndownService from 'turndown'
 import RichEditor from './components/RichEditor'
 import { useMutation } from '@tanstack/react-query'
+import { uploadImageToGitHub } from './utils/uploadImage'
+
+type NewIssue = {
+  owner: string;
+  repo: string;
+  title: string;
+  body: string;
+  labels: string[];
+  assignees: string[];
+  milestone?: number;
+};
 
 export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: { providerToken?: string | null, showAttachments?: boolean }) => {
   const { register, handleSubmit, formState: { errors, isSubmitting }, reset, getValues } = useForm({
@@ -16,7 +27,7 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
       body: 'teste',
       assignees: 'mejat9806', // Default to the repo owner for convenience
       labels: 'test',
-      milestoneId: '1',
+      milestoneId: '',
       providerToken: providerToken || '',
     },
   });
@@ -28,12 +39,30 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
 
 
 
-  const webhookUrl = import.meta.env.VITE_GITHUB_CREATE_ISSUE
   const submitMutation = useMutation({
-    mutationFn: async (fd: FormData) => {
-      const resp = await fetch(webhookUrl, { method: 'POST', body: fd })
-      if (!resp.ok) throw new Error(`Upload failed with status ${resp.status}`)
-      return resp
+    mutationFn: async (issue: NewIssue) => {
+      const { owner, repo, ...payload } = issue
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `token ${providerToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        // GitHub explains the failure (bad label, unknown milestone, no access) in `message`
+        const error = (await response.json().catch(() => null)) as
+          | { message?: string; errors?: { field?: string; code?: string }[] }
+          | null
+        // e.g. "milestone (invalid)" when the repo has no milestone with that number
+        const fieldErrors = (error?.errors ?? []).map((fieldError) => `${fieldError.field} (${fieldError.code})`).join(', ')
+        throw new Error(
+          `GitHub returned ${response.status}${error?.message ? `: ${error.message}` : ''}${fieldErrors ? ` - ${fieldErrors}` : ''}`,
+        )
+      }
+      return (await response.json()) as { html_url: string }
     }
   })
 
@@ -72,50 +101,36 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
     const html = editorHTML || (data.body || '')
     const bodyMarkdown = turndown.turndown(html)
 
-    // Bundle everything into a single Multipart Form Data object
-    const formData = new FormData();
-    formData.append("owner", data.owner);
-    formData.append("repo", data.repoName);
-    formData.append("title", data.title);
-    formData.append("body", bodyMarkdown || "");
-    formData.append("labels", JSON.stringify(parseList(data.labels)));
-    formData.append("assignees", JSON.stringify(parseList(data.assignees)));
-    console.log('Prepared form data for submission:', {
-      owner: data.owner,
-      repo: data.repoName,
-      title: data.title,
-      body: bodyMarkdown,
-      labels: parseList(data.labels),
-      assignees: parseList(data.assignees),
-      milestoneId: data.milestoneId,
-      hasImage: images.length > 0,
-      providerTokenAttached: providerToken,
-    })
-    if (data.milestoneId) formData.append("milestone_id", data.milestoneId);
-
-    // Append all selected raw image files directly to n8n (No Base64 bloat)
-    if (images.length > 0) {
-      images.forEach((file) => {
-        formData.append('images[]', file)
-      })
-    }
-
-    // Attach provider token (GitHub OAuth token) if available
-    if (providerToken) {
-      console.log('Attaching provider token to form submission:', providerToken)
-      formData.append('provider_token', providerToken)
-    } else {
-      console.log('No provider token available to attach')
+    if (!providerToken) {
+      alert('Sign in with GitHub before creating an issue.');
+      return;
     }
 
     try {
-      await submitMutation.mutateAsync(formData)
-      alert("🚀 Issue payload successfully dispatched to your n8n workflow pipeline!");
+      // Attachments are uploaded to the repo and added to the end of the body as images
+      const attachmentMarkdown = await Promise.all(
+        images.map(async (file) => {
+          const url = await uploadImageToGitHub({ file, owner: data.owner, repo: data.repoName, token: providerToken })
+          return `![${file.name}](${url})`
+        }),
+      )
+      const body = [bodyMarkdown, ...attachmentMarkdown].filter(Boolean).join('\n\n')
+
+      const createdIssue = await submitMutation.mutateAsync({
+        owner: data.owner,
+        repo: data.repoName,
+        title: data.title,
+        body,
+        labels: parseList(data.labels),
+        assignees: parseList(data.assignees),
+        milestone: data.milestoneId ? Number(data.milestoneId) : undefined,
+      })
+      alert(`🚀 Issue created: ${createdIssue.html_url}`);
       reset();
       setImages([]);
     } catch (error) {
       console.error('Submission error:', error);
-      alert('An unexpected network error occurred connecting to your local n8n. Please ensure it is running.');
+      alert(`Could not create the issue. ${error instanceof Error ? error.message : ''}`);
     }
   };
 
@@ -127,7 +142,7 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
         <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 px-8 py-6 text-white flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">GitHub Issue Automation</h1>
-            <p className="text-indigo-100 text-sm mt-1">Send issues to GitHub via your n8n workflow</p>
+            <p className="text-indigo-100 text-sm mt-1">Create issues directly on GitHub</p>
           </div>
           <svg className="w-10 h-10 text-indigo-200 fill-current" viewBox="0 0 24 24">
             <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.003 1.003.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.137 20.162 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
@@ -194,7 +209,7 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
           {/* Correct Image Handling Block (Attachments) */}
           {showAttachments && (
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">Attachments (handled via n8n)</label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">Attachments</label>
               <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 relative flex items-center justify-between gap-4">
                 <input
                   id="images"
@@ -272,9 +287,8 @@ export const GitHubIssueCreator = ({ providerToken, showAttachments = false }: {
               disabled={isSubmitting}
               className={`w-full py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white ${isSubmitting ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transform active:scale-[0.99] transition-all`}
             >
-              {isSubmitting ? "Creating Issue..." : "Dispatch to n8n Webhook"}
+              {isSubmitting ? "Creating Issue..." : "Create Issue"}
             </button>
-            <p className="text-xs text-slate-400 mt-2 text-center">Tip: Ensure your n8n webhook URL is set in <span className="font-mono">VITE_GITHUB_CREATE_ISSUE</span></p>
           </div>
 
         </form>
